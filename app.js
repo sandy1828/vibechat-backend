@@ -311,6 +311,20 @@ app.post("/api/message", async (req, res) => {
   });
 });
 
+app.put("/api/message/react/:id", async (req, res) => {
+  const { emoji, userId } = req.body;
+
+  const message = await Messages.findById(req.params.id);
+
+  if (!message) {
+    return res.status(404).json({ message: "Message not found" });
+  }
+
+  message.reactions.push({ userId, emoji });
+  await message.save();
+
+  res.json({ success: true });
+});
 /* -------- GET MESSAGES -------- */
 app.get("/api/message/:conversationId", async (req, res) => {
 

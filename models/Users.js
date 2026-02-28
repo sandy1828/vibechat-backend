@@ -1,13 +1,29 @@
 const mongoose = require("mongoose");
 
-const userSchema = new mongoose.Schema({
-  fullName: String,
-  email: { type: String, unique: true },
-  password: String,
-  lastSeen: {
-    type: Date,
-    default: Date.now
-  }
-}, { timestamps: true });
+const messageSchema = new mongoose.Schema(
+  {
+    conversationId: String,
+    senderId: String,
+    receiverId: String,
+    message: String,
+    status: {
+      type: String,
+      default: "sent",
+    },
 
-module.exports = mongoose.model("Users", userSchema);
+    replyTo: {
+      type: String,
+      default: null,
+    },
+
+    reactions: [
+      {
+        userId: String,
+        emoji: String,
+      },
+    ],
+  },
+  { timestamps: true }
+);
+
+module.exports = mongoose.model("Messages", messageSchema);
