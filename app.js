@@ -1,4 +1,4 @@
-  const express = require("express");
+const express = require("express");
 const bcryptjs = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const cors = require("cors");
@@ -7,16 +7,19 @@ const http = require("http");
 const { Server } = require("socket.io");
 
 /* ================= DATABASE ================= */
-mongoose.connect("mongodb+srv://chatapp-90:8169576470@cluster0.biywaf7.mongodb.net/chatapp?retryWrites=true&w=majority", {
-  useNewUrlParser: true,
-  useUnifiedTopology: true
-})
-.then(() => console.log("✅ MongoDB Connected"))
-.catch(err => {
-  console.log("❌ DB Error:", err.message);
-  process.exit(1);
-});
-
+mongoose
+  .connect(
+    "mongodb+srv://chatapp-90:8169576470@cluster0.biywaf7.mongodb.net/chatapp?retryWrites=true&w=majority",
+    {
+      useNewUrlParser: true,
+      useUnifiedTopology: true,
+    },
+  )
+  .then(() => console.log("✅ MongoDB Connected"))
+  .catch((err) => {
+    console.log("❌ DB Error:", err.message);
+    process.exit(1);
+  });
 
 /* ================= MODELS ================= */
 
@@ -37,8 +40,8 @@ const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
     origin: "*",
-    methods: ["GET", "POST"]
-  }
+    methods: ["GET", "POST"],
+  },
 });
 
 let onlineUsers = [];
@@ -46,13 +49,11 @@ let onlineUsers = [];
 /* ================= SOCKET LOGIC ================= */
 
 io.on("connection", (socket) => {
-
   console.log("🟢 Connected:", socket.id);
 
   /* -------- ADD USER -------- */
   socket.on("addUser", async (userId) => {
-
-    if (!onlineUsers.find(u => u.userId === userId)) {
+    if (!onlineUsers.find((u) => u.userId === userId)) {
       onlineUsers.push({ userId, socketId: socket.id });
     }
 
@@ -60,100 +61,98 @@ io.on("connection", (socket) => {
   });
 
   /* -------- SEND MESSAGE -------- */
+  /* -------- SEND MESSAGE -------- */
   socket.on("sendMessage", async (data) => {
+    const { _id, senderId, receiverId } = data;
 
-    const { messageId, senderId, receiverId } = data;
-
-    const receiver = onlineUsers.find(
-      u => u.userId === receiverId
-    );
+    const receiver = onlineUsers.find((u) => u.userId === receiverId);
 
     if (receiver) {
-
-      await Messages.findByIdAndUpdate(messageId, {
-        status: "delivered"
+      await Messages.findByIdAndUpdate(_id, {
+        status: "delivered",
       });
 
-      io.to(receiver.socketId).emit("getMessage", {
-        ...data,
-        status: "delivered"
-      });
+      const updatedMessage = await Messages.findById(_id);
+
+      io.to(receiver.socketId).emit("getMessage", updatedMessage);
 
       socket.emit("messageStatusUpdate", {
-        messageId,
-        status: "delivered"
+        messageId: _id,
+        status: "delivered",
       });
-
     } else {
       socket.emit("messageStatusUpdate", {
-        messageId,
-        status: "sent"
+        messageId: _id,
+        status: "sent",
       });
+    }
+  });
+  /* -------- END CALL -------- */
+  socket.on("endCall", ({ to }) => {
+    const receiver = onlineUsers.find((u) => u.userId === to);
+
+    if (receiver) {
+      io.to(receiver.socketId).emit("callEnded");
     }
   });
 
   /* -------- CALL USER -------- */
-socket.on("callUser", ({ to, offer, from }) => {
+  socket.on("callUser", ({ to, from }) => {
+    const receiver = onlineUsers.find((u) => u.userId === to);
 
-  const receiver = onlineUsers.find(u => u.userId === to);
+    if (receiver) {
+      io.to(receiver.socketId).emit("incomingCall", {
+        from,
+      });
+    }
+  });
 
-  if (receiver) {
-    io.to(receiver.socketId).emit("incomingCall", {
-      from,
-      offer
-    });
-  }
-});
+  /* -------- ANSWER CALL -------- */
+  socket.on("answerCall", ({ to, answer }) => {
+    const receiver = onlineUsers.find((u) => u.userId === to);
 
-/* -------- ANSWER CALL -------- */
-socket.on("answerCall", ({ to, answer }) => {
+    if (receiver) {
+      io.to(receiver.socketId).emit("callAccepted", {
+        answer,
+      });
+    }
+  });
 
-  const receiver = onlineUsers.find(u => u.userId === to);
+  /* -------- ICE CANDIDATE -------- */
+  socket.on("iceCandidate", ({ to, candidate }) => {
+    const receiver = onlineUsers.find((u) => u.userId === to);
 
-  if (receiver) {
-    io.to(receiver.socketId).emit("callAccepted", {
-      answer
-    });
-  }
-});
-
-/* -------- ICE CANDIDATE -------- */
-socket.on("iceCandidate", ({ to, candidate }) => {
-
-  const receiver = onlineUsers.find(u => u.userId === to);
-
-  if (receiver) {
-    io.to(receiver.socketId).emit("iceCandidate", {
-      candidate
-    });
-  }
-});
+    if (receiver) {
+      io.to(receiver.socketId).emit("iceCandidate", {
+        candidate,
+      });
+    }
+  });
 
   /* -------- MARK AS SEEN -------- */
   socket.on("markAsSeen", async ({ conversationId, viewerId }) => {
-
     const unseenMessages = await Messages.find({
       conversationId,
       receiverId: viewerId,
-      status: { $ne: "seen" }
+      status: { $ne: "seen" },
     });
 
-    await Messages.updateMany({
-      conversationId,
-      receiverId: viewerId,
-      status: { $ne: "seen" }
-    }, { $set: { status: "seen" } });
+    await Messages.updateMany(
+      {
+        conversationId,
+        receiverId: viewerId,
+        status: { $ne: "seen" },
+      },
+      { $set: { status: "seen" } },
+    );
 
-    unseenMessages.forEach(msg => {
-
-      const sender = onlineUsers.find(
-        u => u.userId === msg.senderId
-      );
+    unseenMessages.forEach((msg) => {
+      const sender = onlineUsers.find((u) => u.userId === msg.senderId);
 
       if (sender) {
         io.to(sender.socketId).emit("messageStatusUpdate", {
           messageId: msg._id,
-          status: "seen"
+          status: "seen",
         });
       }
     });
@@ -161,10 +160,7 @@ socket.on("iceCandidate", ({ to, candidate }) => {
 
   /* -------- TYPING -------- */
   socket.on("typing", ({ to, from }) => {
-
-    const receiver = onlineUsers.find(
-      u => u.userId === to
-    );
+    const receiver = onlineUsers.find((u) => u.userId === to);
 
     if (receiver) {
       io.to(receiver.socketId).emit("typing", { from });
@@ -173,20 +169,15 @@ socket.on("iceCandidate", ({ to, candidate }) => {
 
   /* -------- DISCONNECT -------- */
   socket.on("disconnect", async () => {
-
-    const disconnectedUser = onlineUsers.find(
-      u => u.socketId === socket.id
-    );
+    const disconnectedUser = onlineUsers.find((u) => u.socketId === socket.id);
 
     if (disconnectedUser) {
       await Users.findByIdAndUpdate(disconnectedUser.userId, {
-        lastSeen: new Date()
+        lastSeen: new Date(),
       });
     }
 
-    onlineUsers = onlineUsers.filter(
-      u => u.socketId !== socket.id
-    );
+    onlineUsers = onlineUsers.filter((u) => u.socketId !== socket.id);
 
     io.emit("getUsers", onlineUsers);
 
@@ -216,20 +207,18 @@ app.post("/api/register", async (req, res) => {
   const user = new Users({
     fullName,
     email,
-    password: hashed
+    password: hashed,
   });
 
   await user.save();
 
   res.status(201).json({
-    message: "Registered successfully"
+    message: "Registered successfully",
   });
 });
 
-
 /* -------- LOGIN -------- */
 app.post("/api/login", async (req, res) => {
-
   const { email, password } = req.body;
 
   const user = await Users.findOne({ email });
@@ -238,35 +227,30 @@ app.post("/api/login", async (req, res) => {
   const valid = await bcryptjs.compare(password, user.password);
   if (!valid) return res.status(400).send("Invalid");
 
-  const token = jwt.sign(
-    { id: user._id },
-    "SECRET",
-    { expiresIn: "1d" }
-  );
+  const token = jwt.sign({ id: user._id }, "SECRET", { expiresIn: "1d" });
 
   res.json({
     user: {
       id: user._id,
       fullName: user.fullName,
       email: user.email,
-      lastSeen: user.lastSeen
+      lastSeen: user.lastSeen,
     },
-    token
+    token,
   });
 });
 
 /* -------- CREATE / CHECK CONVERSATION -------- */
 app.post("/api/conversation", async (req, res) => {
-
   const { senderId, receiverId } = req.body;
 
   let conversation = await Conversations.findOne({
-    members: { $all: [senderId, receiverId] }
+    members: { $all: [senderId, receiverId] },
   });
 
   if (!conversation) {
     conversation = new Conversations({
-      members: [senderId, receiverId]
+      members: [senderId, receiverId],
     });
     await conversation.save();
   }
@@ -276,18 +260,16 @@ app.post("/api/conversation", async (req, res) => {
 
 /* -------- SEND MESSAGE -------- */
 app.post("/api/message", async (req, res) => {
-
   let { conversationId, senderId, receiverId, message } = req.body;
 
   if (conversationId === "new") {
-
     let existing = await Conversations.findOne({
-      members: { $all: [senderId, receiverId] }
+      members: { $all: [senderId, receiverId] },
     });
 
     if (!existing) {
       existing = new Conversations({
-        members: [senderId, receiverId]
+        members: [senderId, receiverId],
       });
       await existing.save();
     }
@@ -300,15 +282,11 @@ app.post("/api/message", async (req, res) => {
     senderId,
     receiverId,
     message,
-    status: "sent"
+    status: "sent",
   });
 
   await newMessage.save();
-
-  res.json({
-    messageId: newMessage._id,
-    conversationId
-  });
+  res.json(newMessage);
 });
 
 app.put("/api/message/react/:id", async (req, res) => {
@@ -327,9 +305,8 @@ app.put("/api/message/react/:id", async (req, res) => {
 });
 /* -------- GET MESSAGES -------- */
 app.get("/api/message/:conversationId", async (req, res) => {
-
   const messages = await Messages.find({
-    conversationId: req.params.conversationId
+    conversationId: req.params.conversationId,
   }).sort({ createdAt: 1 });
 
   res.json(messages);
@@ -337,30 +314,28 @@ app.get("/api/message/:conversationId", async (req, res) => {
 
 /* -------- GET CONVERSATIONS -------- */
 app.get("/api/conversations/:userId", async (req, res) => {
-
   const conversations = await Conversations.find({
-    members: { $in: [req.params.userId] }
+    members: { $in: [req.params.userId] },
   });
 
   const result = await Promise.all(
     conversations.map(async (conv) => {
-
       const receiverId = conv.members.find(
-        member => member !== req.params.userId
+        (member) => member !== req.params.userId,
       );
 
       const user = await Users.findById(receiverId);
 
       // Get last message
       const lastMessage = await Messages.findOne({
-        conversationId: conv._id
+        conversationId: conv._id,
       }).sort({ createdAt: -1 });
 
       // Count unread
       const unreadCount = await Messages.countDocuments({
         conversationId: conv._id,
         receiverId: req.params.userId,
-        status: { $ne: "seen" }
+        status: { $ne: "seen" },
       });
 
       return {
@@ -369,12 +344,12 @@ app.get("/api/conversations/:userId", async (req, res) => {
           receiverId: user._id,
           fullName: user.fullName,
           email: user.email,
-          lastSeen: user.lastSeen
+          lastSeen: user.lastSeen,
         },
         lastMessage: lastMessage?.message || "",
-        unreadCount
+        unreadCount,
       };
-    })
+    }),
   );
 
   res.json(result);
@@ -382,33 +357,31 @@ app.get("/api/conversations/:userId", async (req, res) => {
 
 // delete
 app.delete("/api/conversation/:conversationId", async (req, res) => {
-
   await Messages.deleteMany({
-    conversationId: req.params.conversationId
+    conversationId: req.params.conversationId,
   });
 
-  await Conversations.findByIdAndDelete(
-    req.params.conversationId
-  );
+  await Conversations.findByIdAndDelete(req.params.conversationId);
 
   res.json({ message: "Conversation deleted" });
 });
 
 /* -------- GET USERS -------- */
 app.get("/api/users/:userId", async (req, res) => {
-
   const users = await Users.find({
-    _id: { $ne: req.params.userId }
+    _id: { $ne: req.params.userId },
   });
 
-  res.json(users.map(user => ({
-    user: {
-      receiverId: user._id,
-      fullName: user.fullName,
-      email: user.email,
-      lastSeen: user.lastSeen
-    }
-  })));
+  res.json(
+    users.map((user) => ({
+      user: {
+        receiverId: user._id,
+        fullName: user.fullName,
+        email: user.email,
+        lastSeen: user.lastSeen,
+      },
+    })),
+  );
 });
 
 /* ================= START ================= */
